@@ -2,26 +2,40 @@
 #define SENSOR_PIN A1
 #define ACTUATOR_PIN 11
 
-#define FORCE_CONTROL
 
+
+#define DEBUG
 
 
 
 
 int sliceNum=0;
 
-#define BUFFER_SIZE 512//make sure to change BUFFER_SIZE_POWER
-#define BUFFER_SIZE_POWER 9 //make sure to change BUFFER_SIZE
-byte FFTBuffer[BUFFER_SIZE]={0};
+#define SAMPLE_RATE 500//
+#define BUFFER_SIZE 128//make sure to change BUFFER_SIZE_POWER
+#define BUFFER_SIZE_POWER 7 //make sure to change BUFFER_SIZE
+int FFTBuffer[BUFFER_SIZE]={0};
 int bufferCount=0;
 
 float FFTx[BUFFER_SIZE]={0};
 float FFTy[BUFFER_SIZE]={0};
-float FFTFrequency=60;
+float frequency=60;
 
 int sensorBuffer=0;
+#define SENSOR_MIN
+#define SENSOR_MAX
+#define 
 
 int actuatorDutyCycle=0;
+
+#define MAX_POSITION
+#define MIN_POSITION
+
+#define FORCE_CONTROL
+
+bool calibrated=false;
+float restFrequency=60;
+float maxFlexFrequency=200;
 
 float kP=0, kI=0, kD=0;
 float error1=0;
@@ -48,6 +62,7 @@ void setup() {
   TCCR1B |= (1 << CS12) | (1 << CS10);  
   // enable timer compare interrupt
   TIMSK1 |= (1 << OCIE1A);
+  #ifdef DEBUG
   Serial.begin(9600);
   Serial.print("SEMG_PIN=");
   Serial.print(SEMG_PIN);
@@ -55,19 +70,21 @@ void setup() {
   Serial.print(SENSOR_PIN);
   Serial.print("\nACTUATOR_PIN=");
   Serial.print(ACTUATOR_PIN);
+  #endif
   sei();//allow interrupts
-  delay(1000);//this is to allow the FFTBuffer to fill
+  delay(250);//this is to allow the FFTBuffer to fill for the first time
 }
 
 void loop() {
   // put your main code here, to run repeatedly:
   int FFTEnd=bufferCount;//this is to prevent inturupps from messing with the order while filling FFTx
-  /*for(int i =0; i<BUFFER_SIZE; i++){   //rearanges the buffer to proper order
+  for(int i =0; i<BUFFER_SIZE; i++){   //rearanges the buffer to proper order
     int index=(i+FFTEnd+1)%BUFFER_SIZE;
     FFTx[i]=FFTBuffer[index];
     FFTy[i]=0;
   }
-  FFT(1,BUFFER_SIZE_POWER,FFTx,FFTy);*/
+  FFT(1,BUFFER_SIZE_POWER,FFTx,FFTy);
+  frequency=FFTFrequency();
 }
 
 ISR(TIMER1_COMPA_vect){//timer1 interrupt 1KHz 
@@ -144,6 +161,9 @@ void writeActuator(void){
   analogWrite(ACTUATOR_PIN,actuatorDutyCycle);
 }
 void runControl(){
+  float output=0;
+
+  
   #ifdef FORCE_CONTROL
   
   #endif
@@ -218,4 +238,17 @@ short FFT(short int dir,int m,float *x,float *y)
    
    return(true);
 }
-
+float FFTFrequency(){
+  int maxIndex=0;
+  float maxMagnitude=0;
+  float currentMagnitude=0;
+  for(int i=4; i<(BUFFER_SIZE/2);i++){
+    currentMagnitude=FFTx[i]*FFTx[i]+FFTy[i]*FFTy[i];
+    if(currentMagnitude>maxMagnitude){
+      maxIndex=i;
+      maxMagnitude=currentMagnitude;
+    }
+  }
+  return maxIndex*SAMPLE_RATE/(BUFFER_SIZE/2);
+  
+}
