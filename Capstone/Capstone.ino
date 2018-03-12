@@ -2,9 +2,20 @@
 #define SENSOR_PIN A1
 #define ACTUATOR_PIN 11
 
+//may set up a calibration at the start
+#define REST_FREQUECY_BUTTON_PIN 0
+#define MAX_FORCE_FREQUECY_BUTTON_PIN 1
+#define CALIBRATED_BUTTON 2
+#define BUTTON_PUSHED LOW
 
 
-#define DEBUG
+//all serail prints happen within the ifndef statments
+#define DEBUG//needed for the others
+//#define DEBUG_ACT
+#define DEBUG_SEMG
+//#define DEBUG_SENSOR
+
+
 
 
 
@@ -22,22 +33,21 @@ float FFTy[BUFFER_SIZE]={0};
 float frequency=60;
 
 int sensorBuffer=0;
-#define SENSOR_MIN
-#define SENSOR_MAX
-#define 
+#define SENSOR_MIN 0//define limits of the feed back sensor
+#define SENSOR_MAX 100
 
-int actuatorDutyCycle=0;
-
-#define MAX_POSITION
-#define MIN_POSITION
+#define MAX_POSITION 0 //values of the feedback sensor that
+#define MIN_POSITION 100
 
 #define FORCE_CONTROL
+
+int actuatorDutyCycle=0;
 
 bool calibrated=false;
 float restFrequency=60;
 float maxFlexFrequency=200;
 
-float kP=0, kI=0, kD=0;
+float kP=1, kI=0, kD=0;
 float error1=0;
 float error2=0;
 
@@ -48,6 +58,15 @@ void writeActuator(void);
 
 
 void setup() {
+  /* disabled untill better thought out
+  pinMode(REST_FREQUECY_BUTTON_PIN, INPUT);
+  pinMode(MAX_FORCE_FREQUECY_BUTTON_PIN, INPUT);
+  pinMode(CALIBRATED_BUTTON, INPUT);
+  while(calibrated!){
+    if(digitalRead(REST_FREQUECY_BUTTON_PIN)==BUTTON_PUSHED){
+      
+    }
+  }*/
   // put your setup code here, to run once:
   cli();//stop interrupts
   //set timer1 interrupt at 1KHz
@@ -55,13 +74,16 @@ void setup() {
   TCCR1B = 0;// same for TCCR1B
   TCNT1  = 0;//initialize counter value to 0
   // set compare match register for 1hz increments
-  OCR1A = 15999;// = (16*10^6) - 1 (must be <65536)
+  OCR1A = 15999;// = (16*10^6) - 1 (must be <65536) 15999
   // turn on CTC mode
   TCCR1B |= (1 << WGM12);
   // Set CS10 bit for no prescaler
-  TCCR1B |= (1 << CS12) | (1 << CS10);  
+  TCCR1B |= (1 << CS10);  
   // enable timer compare interrupt
   TIMSK1 |= (1 << OCIE1A);
+  while(calibrated!){
+    
+  }
   #ifdef DEBUG
   Serial.begin(9600);
   Serial.print("SEMG_PIN=");
@@ -70,6 +92,16 @@ void setup() {
   Serial.print(SENSOR_PIN);
   Serial.print("\nACTUATOR_PIN=");
   Serial.print(ACTUATOR_PIN);
+  Serial.print("\n");
+  #endif
+  #ifdef DEBUG_ACT
+  Serial.print("actuatorDutyCycle\n");
+  #endif
+  #ifdef DEBUG_SEMG
+  Serial.print("FFTBuffer,bufferCount\n");
+  #endif
+  #ifdef DEBUG_SENSOR
+  Serial.print("sensorBuffer\n");
   #endif
   sei();//allow interrupts
   delay(250);//this is to allow the FFTBuffer to fill for the first time
@@ -85,6 +117,7 @@ void loop() {
   }
   FFT(1,BUFFER_SIZE_POWER,FFTx,FFTy);
   frequency=FFTFrequency();
+  
 }
 
 ISR(TIMER1_COMPA_vect){//timer1 interrupt 1KHz 
@@ -151,18 +184,31 @@ ISR(TIMER1_COMPA_vect){//timer1 interrupt 1KHz
 }
 void readSEMG(void){
   FFTBuffer[bufferCount]=analogRead(SEMG_PIN);
+  #ifdef DEBUG_SEMG
+  Serial.print(FFTBuffer[bufferCount]);
+  Serial.print(",");
+  Serial.print(bufferCount);
+  Serial.print("\n");
+  #endif
   bufferCount++;
-  bufferCount=bufferCount%512;
+  bufferCount=bufferCount%BUFFER_SIZE;
+  
 }
 void readSensor(void){
   sensorBuffer=analogRead(SENSOR_PIN);
+  #ifdef DEBUG_SENSOR
+  Serial.print(sensorBuffer);
+  //Serial.print(",");
+  Serial.print("\n");
+  #endif
 }
 void writeActuator(void){
   analogWrite(ACTUATOR_PIN,actuatorDutyCycle);
 }
 void runControl(){
   float output=0;
-
+  error2=error1;
+  error1=sensorBuffer;//fill need function to convert
   
   #ifdef FORCE_CONTROL
   
@@ -252,3 +298,7 @@ float FFTFrequency(){
   return maxIndex*SAMPLE_RATE/(BUFFER_SIZE/2);
   
 }
+float frequencyLinerize(float frequency){
+  
+}
+
