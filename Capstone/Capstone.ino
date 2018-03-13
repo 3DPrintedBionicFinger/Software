@@ -5,18 +5,19 @@
 //may set up a calibration at the start
 #define REST_FREQUECY_BUTTON_PIN 0
 #define MAX_FORCE_FREQUECY_BUTTON_PIN 1
-#define CALIBRATED_BUTTON 2
+#define CALIBRATED_BUTTON_PIN 2
 #define BUTTON_PUSHED LOW
 
 
 //all serail prints happen within the ifndef statments
-#define DEBUG//needed for the others
+#define DEBUG//needed for the others, dont have more then one on at the same time, serial will be a mess of values
 //#define DEBUG_ACT
-#define DEBUG_SEMG
+//#define DEBUG_SEMG
 //#define DEBUG_SENSOR
+//#define DEBUG_TASK_TIMES//messes with all timing and interupts when on
 
 
-
+//#define CALIBRATE //not sure how it reacts when the circuit is not set up
 
 
 
@@ -33,23 +34,34 @@ float FFTy[BUFFER_SIZE]={0};
 float frequency=60;
 
 int sensorBuffer=0;
-#define SENSOR_MIN 0//define limits of the feed back sensor
+#define SENSOR_MIN 0//define limits of the feed back sensor that could break the actuator, used for testing, thats all
 #define SENSOR_MAX 100
 
-#define MAX_POSITION 0 //values of the feedback sensor that
-#define MIN_POSITION 100
+#define POSITION_MAX SENSOR_MIN //values of the feedback sensor that could break the finger, will be different from SENSOR_MIN and MAX
+#define POSITION_MIN SENSOR_MAX
+#define POSITION_BUFFER 5//adds a value to the min, and subtracts from the max
+
 
 #define FORCE_CONTROL
 
-int actuatorDutyCycle=0;
+
+#define DUTY_CYCLE_MAX 255 //the max force we want to apply to prevent breaking
+#define DUTY_CYCLE_REST 100 // the 
+#define DUTY_CYCLE_MIN 0
+
+int actDutyCycle=0;
 
 bool calibrated=false;
 float restFrequency=60;
-float maxFlexFrequency=200;
+float maxForceFrequency=200;
 
 float kP=1, kI=0, kD=0;
 float error1=0;
 float error2=0;
+
+#ifdef DEBUG_TASK_TIMES
+unsigned long readSEMGTime=0, writeActTime=0, FFTTime=0, controlTime=0;
+#endif
 
 void readSEMG(void);
 void readSensor(void);
@@ -58,15 +70,11 @@ void writeActuator(void);
 
 
 void setup() {
-  /* disabled untill better thought out
+  #ifdef CALIBRATE
   pinMode(REST_FREQUECY_BUTTON_PIN, INPUT);
   pinMode(MAX_FORCE_FREQUECY_BUTTON_PIN, INPUT);
-  pinMode(CALIBRATED_BUTTON, INPUT);
-  while(calibrated!){
-    if(digitalRead(REST_FREQUECY_BUTTON_PIN)==BUTTON_PUSHED){
-      
-    }
-  }*/
+  pinMode(CALIBRATED_BUTTON_PIN, INPUT);
+  #endif
   // put your setup code here, to run once:
   cli();//stop interrupts
   //set timer1 interrupt at 1KHz
@@ -81,9 +89,7 @@ void setup() {
   TCCR1B |= (1 << CS10);  
   // enable timer compare interrupt
   TIMSK1 |= (1 << OCIE1A);
-  while(calibrated!){
-    
-  }
+  
   #ifdef DEBUG
   Serial.begin(9600);
   Serial.print("SEMG_PIN=");
@@ -103,12 +109,19 @@ void setup() {
   #ifdef DEBUG_SENSOR
   Serial.print("sensorBuffer\n");
   #endif
+  #ifdef DEBUG_TASK_TIMES
+  Serial.print("Read SEMG Time,  Actuator Write Time, FFT Time,  Control Time\n");
+  #endif
   sei();//allow interrupts
   delay(250);//this is to allow the FFTBuffer to fill for the first time
 }
 
 void loop() {
   // put your main code here, to run repeatedly:
+  #ifdef DEBUG_TASK_TIMES
+  cli();
+  FFTTime=micros();
+  #endif
   int FFTEnd=bufferCount;//this is to prevent inturupps from messing with the order while filling FFTx
   for(int i =0; i<BUFFER_SIZE; i++){   //rearanges the buffer to proper order
     int index=(i+FFTEnd+1)%BUFFER_SIZE;
@@ -117,13 +130,34 @@ void loop() {
   }
   FFT(1,BUFFER_SIZE_POWER,FFTx,FFTy);
   frequency=FFTFrequency();
-  
+  #ifdef DEBUG_TASK_TIMES
+  FFTTime=micros()-FFTTime;
+  Serial.print(readSEMGTime);
+  Serial.print(",");
+  Serial.print(writeActTime);
+  Serial.print(",");
+  Serial.print(FFTTime);
+  Serial.print(",");
+  Serial.print(controlTime);
+  Serial.print("\n");
+  sei();
+  delay(250);
+  #endif
 }
 
 ISR(TIMER1_COMPA_vect){//timer1 interrupt 1KHz 
-  switch(sliceNum){
+  switch(sliceNum){//this is a time slice schedular, with 1ms slices
     case 0:
+      #ifdef DEBUG_TASK_TIMES
+      cli();
+      readSEMGTime=micros();
+      #endif
       readSEMG();
+      #ifdef DEBUG_TASK_TIMES
+      readSEMGTime=micros()-readSEMGTime;
+      sei();
+      #endif
+      
       break;
      case 1:
       readSensor();
@@ -132,17 +166,51 @@ ISR(TIMER1_COMPA_vect){//timer1 interrupt 1KHz
       readSEMG();
       break;
      case 3:
-      //runControl();
+     #ifdef DEBUG_TASK_TIMES
+      cli();
+      controlTime=micros();
+      #endif
+      runControl();
+      #ifdef DEBUG_TASK_TIMES
+      controlTime=micros()-controlTime;
+      sei();
+      #endif
       break;
      case 4:
       readSEMG();
       break;
      case 5:
+     #ifdef DEBUG_TASK_TIMES
+      cli();
+      writeActTime=micros();
+      #endif
       writeActuator();
+      #ifdef DEBUG_TASK_TIMES
+      writeActTime=micros()-writeActTime;
+      sei();
+      #endif
       break;
      case 6:
       readSEMG();
       break;
+     case 7:
+      #ifdef CALIBRATE
+      if(digitalRead(CALIBRATED_BUTTON_PIN)==BUTTON_PUSHED){
+          if(calibrated){
+            calibrated=false;
+          }else{
+            calibrated=true;
+          }
+        }
+      if(calibrated!){
+        if(digitalRead(REST_FREQUECY_BUTTON_PIN)==BUTTON_PUSHED){
+          restFrequency=frequency;
+        }
+        if(digitalRead(MAX_FORCE_FREQUECY_BUTTON_PIN)==BUTTON_PUSHED){
+          maxForceFrequency=frequency;
+        }
+      }
+      #endif
      case 8:
       readSEMG();
       break;
@@ -203,12 +271,22 @@ void readSensor(void){
   #endif
 }
 void writeActuator(void){
-  analogWrite(ACTUATOR_PIN,actuatorDutyCycle);
+  analogWrite(ACTUATOR_PIN,actDutyCycle);
+  #ifdef DEBUG_ACT
+  Serial.print(actDutyCycle);
+  //Serial.print(",");
+  Serial.print("\n");
+  #endif
 }
 void runControl(){
   float output=0;
+  float input=0;
+  float sensor=0;
+  input=frequencyLinerize(frequency);
+  sensor=sensorLinerize(sensorBuffer);
   error2=error1;
-  error1=sensorBuffer;//fill need function to convert
+  error1=input-sensor;
+  output=kP*error1+kI*(error1+error2)+kD*(error1-error2);
   
   #ifdef FORCE_CONTROL
   
@@ -288,7 +366,7 @@ float FFTFrequency(){
   int maxIndex=0;
   float maxMagnitude=0;
   float currentMagnitude=0;
-  for(int i=4; i<(BUFFER_SIZE/2);i++){
+  for(int i=4; i<(BUFFER_SIZE/2);i++){//start at 4 is to skip problems at the lower frequncies due to descretization
     currentMagnitude=FFTx[i]*FFTx[i]+FFTy[i]*FFTy[i];
     if(currentMagnitude>maxMagnitude){
       maxIndex=i;
@@ -298,7 +376,29 @@ float FFTFrequency(){
   return maxIndex*SAMPLE_RATE/(BUFFER_SIZE/2);
   
 }
-float frequencyLinerize(float frequency){
+float frequencyLinerize(float frequency){//gives a value from 0-1 of frequency
+  float output=0;
+  if (frequency < restFrequency){
+    frequency=restFrequency;
+  }
+  if (frequency > maxForceFrequency){
+    frequency=maxForceFrequency;
+  }
+
+  output=(frequency-restFrequency)/(maxForceFrequency-restFrequency);
+  return output;
+  
+  
+}
+
+float sensorLinerize(int input){//gives a value from 0-1 based on senor value
+  float output=0; 
+  
+  output=(input-(POSITION_MIN+POSITION_BUFFER))/(POSITION_MAX-POSITION_MIN-POSITION_BUFFER*2);
+  return output;
+}
+
+int controlToActDutyCycle(float input){
   
 }
 
