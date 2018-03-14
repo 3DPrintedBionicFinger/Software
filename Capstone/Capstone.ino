@@ -15,6 +15,7 @@
 //#define DEBUG_SEMG
 //#define DEBUG_SENSOR
 //#define DEBUG_TASK_TIMES//messes with all timing and interupts when on
+//#define DEBUG_FFT
 
 
 //#define CALIBRATE //not sure how it reacts when the circuit is not set up
@@ -53,7 +54,7 @@ int actDutyCycle=0;
 
 bool calibrated=false;
 float restFrequency=60;
-float maxForceFrequency=200;
+float maxForceFrequency=160;
 
 float kP=1, kI=0, kD=0;
 float error1=0;
@@ -112,8 +113,10 @@ void setup() {
   #ifdef DEBUG_TASK_TIMES
   Serial.print("Read SEMG Time,  Actuator Write Time, FFT Time,  Control Time\n");
   #endif
+//  #ifdef DEBUG_FFT
+  
   sei();//allow interrupts
-  delay(250);//this is to allow the FFTBuffer to fill for the first time
+  delay(250);//this is to allow the FFTBuffer to fill for the first time  
 }
 
 void loop() {
