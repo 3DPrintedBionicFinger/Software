@@ -1,6 +1,8 @@
 #define SEMG_PIN A0
 #define SENSOR_PIN A1
 #define ACTUATOR_PIN 11
+#define H_BRIDGE_FORWARD_PIN
+#define H_BRIDGE_BACKWARD_PIN
 
 //may set up a calibration at the start
 #define REST_FREQUECY_BUTTON_PIN 0
@@ -12,7 +14,7 @@
 //all serail prints happen within the ifndef statments
 #define DEBUG//needed for the others, dont have more then one on at the same time, serial will be a mess of values
 //#define DEBUG_ACT
-//#define DEBUG_SEMG
+#define DEBUG_SEMG
 //#define DEBUG_SENSOR
 //#define DEBUG_TASK_TIMES//messes with all timing and interupts when on
 //#define DEBUG_FFT
@@ -110,6 +112,9 @@ void setup() {
   #ifdef DEBUG_SENSOR
   Serial.print("sensorBuffer\n");
   #endif
+  #ifdef DEBUG_FFT
+  Serial.print("FFT frequency\n");
+  #endif
   #ifdef DEBUG_TASK_TIMES
   Serial.print("Read SEMG Time,  Actuator Write Time, FFT Time,  Control Time\n");
   #endif
@@ -133,6 +138,11 @@ void loop() {
   }
   FFT(1,BUFFER_SIZE_POWER,FFTx,FFTy);
   frequency=FFTFrequency();
+  #ifdef DEBUG_FFT
+  Serial.print(frequency);
+  Serial.print("\n");
+  #endif
+  //frequency=goertzel_mag(BUFFER_SIZE,60.0,SAMPLE_RATE, FFTx);//float goertzel_mag(int numSamples,float TARGET_FREQUENCY,int SAMPLING_RATE, float* data)
   #ifdef DEBUG_TASK_TIMES
   FFTTime=micros()-FFTTime;
   Serial.print(readSEMGTime);
@@ -403,5 +413,38 @@ float sensorLinerize(int input){//gives a value from 0-1 based on senor value
 
 int controlToActDutyCycle(float input){
   
+}
+float goertzel_mag(int numSamples,float TARGET_FREQUENCY,int SAMPLING_RATE, float* data)
+{
+    int     k,i;
+    float   floatnumSamples;
+    float   omega,sine,cosine,coeff,q0,q1,q2,magnitude,real,imag;
+
+    float   scalingFactor = numSamples / 2.0;
+
+    floatnumSamples = (float) numSamples;
+    k = (int) (0.5 + ((floatnumSamples * TARGET_FREQUENCY) / (float)SAMPLING_RATE));
+    omega = (2.0 * M_PI * k) / floatnumSamples;
+    sine = sin(omega);
+    cosine = cos(omega);
+    coeff = 2.0 * cosine;
+    q0=0;
+    q1=0;
+    q2=0;
+
+    for(i=0; i<numSamples; i++)
+    {
+        q0 = coeff * q1 - q2 + data[i];
+        q2 = q1;
+        q1 = q0;
+    }
+
+    // calculate the real and imaginary results
+    // scaling appropriately
+    real = (q1 - q2 * cosine) / scalingFactor;
+    imag = (q2 * sine) / scalingFactor;
+
+    magnitude = sqrtf(real*real + imag*imag);
+    return magnitude;
 }
 
