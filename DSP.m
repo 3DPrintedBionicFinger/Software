@@ -39,7 +39,7 @@ plot(linspace(0,500,64),temp);
 grid on
 grid minor
 
-Y4=fft(sEMG6(1:1000,1),1000);
+Y4=fft(sEMG6(1:1000,1),128);
 figure
 plot(abs(Y4(2:end)))
 
