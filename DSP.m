@@ -43,6 +43,6 @@ Y4=fft(sEMG6(1:1000,1),128);
 figure
 plot(abs(Y4(2:end)))
 
-max(TaskTimes)
-mean(TaskTimes)
-min(TaskTimes)
+max(TaskTimesG)
+mean(TaskTimesG)
+min(TaskTimesG)

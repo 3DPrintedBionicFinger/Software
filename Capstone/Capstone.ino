@@ -14,9 +14,9 @@
 //all serail prints happen within the ifndef statments
 #define DEBUG//needed for the others, dont have more then one on at the same time, serial will be a mess of values
 //#define DEBUG_ACT
-#define DEBUG_SEMG
+//#define DEBUG_SEMG
 //#define DEBUG_SENSOR
-//#define DEBUG_TASK_TIMES//messes with all timing and interupts when on
+#define DEBUG_TASK_TIMES//messes with all timing and interupts when on
 //#define DEBUG_FFT
 
 
@@ -136,13 +136,13 @@ void loop() {
     FFTx[i]=FFTBuffer[index];
     FFTy[i]=0;
   }
-  FFT(1,BUFFER_SIZE_POWER,FFTx,FFTy);
-  frequency=FFTFrequency();
+  //FFT(1,BUFFER_SIZE_POWER,FFTx,FFTy);
+  //frequency=FFTFrequency();
   #ifdef DEBUG_FFT
   Serial.print(frequency);
   Serial.print("\n");
   #endif
-  //frequency=goertzel_mag(BUFFER_SIZE,60.0,SAMPLE_RATE, FFTx);//float goertzel_mag(int numSamples,float TARGET_FREQUENCY,int SAMPLING_RATE, float* data)
+  frequency=goertzel_mag(BUFFER_SIZE,60.0,SAMPLE_RATE, FFTx);//float goertzel_mag(int numSamples,float TARGET_FREQUENCY,int SAMPLING_RATE, float* data)
   #ifdef DEBUG_TASK_TIMES
   FFTTime=micros()-FFTTime;
   Serial.print(readSEMGTime);
