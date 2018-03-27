@@ -1,0 +1,2 @@
+sEMG9=str2double(SerialData(3:end);
+%csvwrite('MikeRest-20S-675Hz',sEMG8);

@@ -1,8 +1,12 @@
 #define SEMG_PIN A0
 #define SENSOR_PIN A1
 #define ACTUATOR_PIN 11
-#define H_BRIDGE_FORWARD_PIN
-#define H_BRIDGE_BACKWARD_PIN
+#define H_BRIDGE_FORWARD_PIN 4
+#define H_BRIDGE_BACKWARD_PIN 5
+#define TOGGLE_PIN 7
+
+bool toggle=true;
+bool hBridgeForward=true;
 
 //may set up a calibration at the start
 #define REST_FREQUECY_BUTTON_PIN 0
@@ -10,14 +14,17 @@
 #define CALIBRATED_BUTTON_PIN 2
 #define BUTTON_PUSHED LOW
 
+  int incomingByte=0;
+  
 
 //all serail prints happen within the ifndef statments
-#define DEBUG//needed for the others, dont have more then one on at the same time, serial will be a mess of values
+//#define DEBUG//needed for the others, dont have more then one on at the same time, serial will be a mess of values
 //#define DEBUG_ACT
-//#define DEBUG_SEMG
+#define DEBUG_SEMG
 //#define DEBUG_SENSOR
-#define DEBUG_TASK_TIMES//messes with all timing and interupts when on
+//#define DEBUG_TASK_TIMES//messes with all timing and interupts when on
 //#define DEBUG_FFT
+
 
 
 //#define CALIBRATE //not sure how it reacts when the circuit is not set up
@@ -30,10 +37,11 @@ int sliceNum=0;
 #define BUFFER_SIZE 128//make sure to change BUFFER_SIZE_POWER
 #define BUFFER_SIZE_POWER 7 //make sure to change BUFFER_SIZE
 int FFTBuffer[BUFFER_SIZE]={0};
+float FFTAverage=0;
 int bufferCount=0;
 
-float FFTx[BUFFER_SIZE]={0};
-float FFTy[BUFFER_SIZE]={0};
+//float FFTx[BUFFER_SIZE]={0};
+//float FFTy[BUFFER_SIZE]={0};
 float frequency=60;
 
 int sensorBuffer=0;
@@ -44,8 +52,9 @@ int sensorBuffer=0;
 #define POSITION_MIN SENSOR_MAX
 #define POSITION_BUFFER 5//adds a value to the min, and subtracts from the max
 
+#define INPUT_TO_POSITION 0.20 //the number from 0 - 1 that indecates full contraction from the input
 
-#define FORCE_CONTROL
+//#define FORCE_CONTROL
 
 
 #define DUTY_CYCLE_MAX 255 //the max force we want to apply to prevent breaking
@@ -73,6 +82,12 @@ void writeActuator(void);
 
 
 void setup() {
+  Serial.begin(115200);
+  pinMode(TOGGLE_PIN, OUTPUT);
+  pinMode(H_BRIDGE_FORWARD_PIN, OUTPUT);
+  pinMode(H_BRIDGE_BACKWARD_PIN, OUTPUT);
+  digitalWrite(H_BRIDGE_BACKWARD_PIN, LOW);
+  digitalWrite(H_BRIDGE_FORWARD_PIN,HIGH);
   #ifdef CALIBRATE
   pinMode(REST_FREQUECY_BUTTON_PIN, INPUT);
   pinMode(MAX_FORCE_FREQUECY_BUTTON_PIN, INPUT);
@@ -94,7 +109,7 @@ void setup() {
   TIMSK1 |= (1 << OCIE1A);
   
   #ifdef DEBUG
-  Serial.begin(9600);
+  //Serial.begin(128000);
   Serial.print("SEMG_PIN=");
   Serial.print(SEMG_PIN);
   Serial.print("\nSENSOR_PIN=");
@@ -130,19 +145,19 @@ void loop() {
   cli();
   FFTTime=micros();
   #endif
-  int FFTEnd=bufferCount;//this is to prevent inturupps from messing with the order while filling FFTx
+  /*int FFTEnd=bufferCount;//this is to prevent inturupps from messing with the order while filling FFTx
   for(int i =0; i<BUFFER_SIZE; i++){   //rearanges the buffer to proper order
     int index=(i+FFTEnd+1)%BUFFER_SIZE;
     FFTx[i]=FFTBuffer[index];
     FFTy[i]=0;
-  }
+  }*/
   //FFT(1,BUFFER_SIZE_POWER,FFTx,FFTy);
   //frequency=FFTFrequency();
   #ifdef DEBUG_FFT
   Serial.print(frequency);
   Serial.print("\n");
   #endif
-  frequency=goertzel_mag(BUFFER_SIZE,60.0,SAMPLE_RATE, FFTx);//float goertzel_mag(int numSamples,float TARGET_FREQUENCY,int SAMPLING_RATE, float* data)
+  //frequency=goertzel_mag(BUFFER_SIZE,60.0,SAMPLE_RATE, FFTx);//float goertzel_mag(int numSamples,float TARGET_FREQUENCY,int SAMPLING_RATE, float* data)
   #ifdef DEBUG_TASK_TIMES
   FFTTime=micros()-FFTTime;
   Serial.print(readSEMGTime);
@@ -227,6 +242,9 @@ ISR(TIMER1_COMPA_vect){//timer1 interrupt 1KHz
      case 8:
       readSEMG();
       break;
+     case 9:
+      getMatlab();
+      break;
      case 10:
       readSEMG();
       break;
@@ -265,10 +283,12 @@ ISR(TIMER1_COMPA_vect){//timer1 interrupt 1KHz
 }
 void readSEMG(void){
   FFTBuffer[bufferCount]=analogRead(SEMG_PIN);
+  //toggle= !toggle;
+  //digitalWrite(TOGGLE_PIN,toggle);
   #ifdef DEBUG_SEMG
   Serial.print(FFTBuffer[bufferCount]);
-  Serial.print(",");
-  Serial.print(bufferCount);
+  //Serial.print(",");
+  //Serial.print(bufferCount);
   Serial.print("\n");
   #endif
   bufferCount++;
@@ -284,6 +304,14 @@ void readSensor(void){
   #endif
 }
 void writeActuator(void){
+  if(hBrigdeForward){
+     digitalWrite(H_BRIDGE_BACKWARD_PIN, LOW);
+     digitalWrite(H_BRIDGE_FORWARD_PIN,HIGH);
+  }
+  if(!hBrigdeForward){
+     digitalWrite(H_BRIDGE_FORWARD_PIN, LOW);
+     digitalWrite(H_BRIDGE_BACKWARD_PIN,HIGH);
+  }
   analogWrite(ACTUATOR_PIN,actDutyCycle);
   #ifdef DEBUG_ACT
   Serial.print(actDutyCycle);
@@ -295,15 +323,17 @@ void runControl(){
   float output=0;
   float input=0;
   float sensor=0;
-  input=frequencyLinerize(frequency);
+  input=float(incomingByte)/255.0;
   sensor=sensorLinerize(sensorBuffer);
   error2=error1;
   error1=input-sensor;
   output=kP*error1+kI*(error1+error2)+kD*(error1-error2);
-  
+    
   #ifdef FORCE_CONTROL
-  
+  if (output>input)//celing value of the output is the input
+    output=input;
   #endif
+  actDutyCycle=controlToActDutyCycle(output);
 }
 
 short FFT(short int dir,int m,float *x,float *y)
@@ -375,7 +405,7 @@ short FFT(short int dir,int m,float *x,float *y)
    
    return(true);
 }
-float FFTFrequency(){
+/*float FFTFrequency(){
   int maxIndex=0;
   float maxMagnitude=0;
   float currentMagnitude=0;
@@ -388,7 +418,7 @@ float FFTFrequency(){
   }
   return maxIndex*SAMPLE_RATE/(BUFFER_SIZE/2);
   
-}
+}*/
 float frequencyLinerize(float frequency){//gives a value from 0-1 of frequency
   float output=0;
   if (frequency < restFrequency){
@@ -412,7 +442,17 @@ float sensorLinerize(int input){//gives a value from 0-1 based on senor value
 }
 
 int controlToActDutyCycle(float input){
-  
+  int output=0;
+  if (input<0){
+    hBridgeForward=false;
+  }else{
+    hBridgeForward=true;
+  }
+  output=int(abs(input)*255));
+  if (output>255){
+    output=255;
+  }
+  return output;
 }
 float goertzel_mag(int numSamples,float TARGET_FREQUENCY,int SAMPLING_RATE, float* data)
 {
@@ -446,5 +486,21 @@ float goertzel_mag(int numSamples,float TARGET_FREQUENCY,int SAMPLING_RATE, floa
 
     magnitude = sqrtf(real*real + imag*imag);
     return magnitude;
+}
+
+void getMatlab(){
+
+  if (Serial.available() > 0) {
+                // read the incoming byte:
+                incomingByte = Serial.read();
+
+                // say what you got:
+                //Serial.print("I received: ");
+                //Serial.println(incomingByte, DEC);
+                //actDutyCycle=incomingByte;
+                
+        }
+
+        
 }
 
