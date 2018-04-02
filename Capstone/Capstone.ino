@@ -14,8 +14,11 @@ bool hBridgeForward=true;
 #define CALIBRATED_BUTTON_PIN 2
 #define BUTTON_PUSHED LOW
 
-  int incomingByte=0;
-  
+#define FREQUENCY_BUFFER_SIZE 16
+
+int frequencyBufferCount=0;
+byte frequencyBuffer[FREQUENCY_BUFFER_SIZE]={0};
+
 
 //all serail prints happen within the ifndef statments
 //#define DEBUG//needed for the others, dont have more then one on at the same time, serial will be a mess of values
@@ -66,6 +69,8 @@ int actDutyCycle=0;
 bool calibrated=false;
 float restFrequency=60;
 float maxForceFrequency=160;
+float averageFrequancy=0;
+float previousAverageFrequency=0;
 
 float kP=1, kI=0, kD=0;
 float error1=0;
@@ -304,11 +309,11 @@ void readSensor(void){
   #endif
 }
 void writeActuator(void){
-  if(hBrigdeForward){
+  if(hBridgeForward){
      digitalWrite(H_BRIDGE_BACKWARD_PIN, LOW);
      digitalWrite(H_BRIDGE_FORWARD_PIN,HIGH);
   }
-  if(!hBrigdeForward){
+  if(!hBridgeForward){
      digitalWrite(H_BRIDGE_FORWARD_PIN, LOW);
      digitalWrite(H_BRIDGE_BACKWARD_PIN,HIGH);
   }
@@ -323,17 +328,33 @@ void runControl(){
   float output=0;
   float input=0;
   float sensor=0;
-  input=float(incomingByte)/255.0;
+
+
+  
+  
   sensor=sensorLinerize(sensorBuffer);
-  error2=error1;
-  error1=input-sensor;
-  output=kP*error1+kI*(error1+error2)+kD*(error1-error2);
+  if ((averageFrequancy-previousAverageFrequency)>=0){
+    input=1;
+    error2=error1;
+    error1=input-sensor;
+    output=kP*error1+kI*(error1+error2)+kD*(error1-error2);
     
-  #ifdef FORCE_CONTROL
-  if (output>input)//celing value of the output is the input
-    output=input;
-  #endif
-  actDutyCycle=controlToActDutyCycle(output);
+    if (output>input)//celing value of the output is the input
+      output=input;
+
+  }else{
+    input=0;
+    error2=error1;
+    error1=input-sensor;
+    output=kP*error1+kI*(error1+error2)+kD*(error1-error2);
+    
+    if (output<(averageFrequancy-previousAverageFrequency)/10)//10 was from expariment will need to tune
+      output=(averageFrequancy-previousAverageFrequency)/10;
+  }
+
+
+    actDutyCycle=controlToActDutyCycle(output);
+    
 }
 
 short FFT(short int dir,int m,float *x,float *y)
@@ -443,12 +464,12 @@ float sensorLinerize(int input){//gives a value from 0-1 based on senor value
 
 int controlToActDutyCycle(float input){
   int output=0;
-  if (input<0){
+  if (input<0){//h-bridge section
     hBridgeForward=false;
   }else{
     hBridgeForward=true;
   }
-  output=int(abs(input)*255));
+  output=int(abs(input)*255);//rescale to pwm 8bit
   if (output>255){
     output=255;
   }
@@ -492,14 +513,20 @@ void getMatlab(){
 
   if (Serial.available() > 0) {
                 // read the incoming byte:
-                incomingByte = Serial.read();
-
+                
+                frequencyBuffer[frequencyBufferCount] = Serial.read();
+                frequencyBufferCount++;
+                frequencyBufferCount=frequencyBufferCount%FREQUENCY_BUFFER_SIZE;
                 // say what you got:
                 //Serial.print("I received: ");
-                //Serial.println(incomingByte, DEC);
-                //actDutyCycle=incomingByte;
-                
+                //Serial.println(frequencyByte, DEC);
+                //actDutyCycle=frequencyByte;
+                  for (int i=0; i< FREQUENCY_BUFFER_SIZE; i++){
+                        averageFrequancy+=float(frequencyBuffer[i])/255.0;
+                  }
+                  previousAverageFrequency=averageFrequancy;
         }
+        
 
         
 }
