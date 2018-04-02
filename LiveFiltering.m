@@ -38,7 +38,7 @@ while toc < mt %loop while the timer has not run mt seconds
 %     end
     if (length(SerialData)>(FFTSize/2+1))
         sampleTime=toc-startTime;
-        dataToFilter=str2double(SerialData(1:FFTSize));%the start points help avoid band transfers at the start
+        dataToFilter=str2double(SerialData(1:FFTSize/2));%the start points help avoid band transfers at the start
         
         %filtering
         %dataToFilter=filtfilt(d,dataToFilter);%applies notch filter
@@ -71,7 +71,7 @@ while toc < mt %loop while the timer has not run mt seconds
         plot(dataToFilter)
         hold off
         loopCount=loopCount+1;
-            pause(0.1);
+            pause(0.05);
         
         
         if (avgFreq>freqMax)

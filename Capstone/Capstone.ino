@@ -203,7 +203,7 @@ ISR(TIMER1_COMPA_vect){//timer1 interrupt 1KHz
       cli();
       controlTime=micros();
       #endif
-      runControl();
+      //runControl();
       #ifdef DEBUG_TASK_TIMES
       controlTime=micros()-controlTime;
       sei();
@@ -513,17 +513,17 @@ void getMatlab(){
 
   if (Serial.available() > 0) {
                 // read the incoming byte:
-                
+                averageFrequancy=0;
                 frequencyBuffer[frequencyBufferCount] = Serial.read();
                 frequencyBufferCount++;
                 frequencyBufferCount=frequencyBufferCount%FREQUENCY_BUFFER_SIZE;
                 // say what you got:
                 //Serial.print("I received: ");
                 //Serial.println(frequencyByte, DEC);
-                //actDutyCycle=frequencyByte;
                   for (int i=0; i< FREQUENCY_BUFFER_SIZE; i++){
                         averageFrequancy+=float(frequencyBuffer[i])/255.0;
                   }
+                  actDutyCycle=int(averageFrequancy*255);
                   previousAverageFrequency=averageFrequancy;
         }
         
