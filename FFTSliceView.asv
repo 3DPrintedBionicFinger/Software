@@ -1,7 +1,9 @@
 FFTsize=128;
 
-data=sEMG;
-
+%data=csvread("MikeFlex-10S-675Hz");
+%data=csvread("MikeRest-20S-731Hz");
+data=downsample(double(emg44(:,1)),4);
+%data=sEMG11;
 
 % sampleTimes(1:999)=0;
 % for x= 1:1000
@@ -13,13 +15,17 @@ data=sEMG;
 
 SRate=500;
 f2=SRate*(0:(FFTsize-1))/FFTsize;
-
-
-
-for m = 1:floor(length(data)/FFTsize)
-    %pause(1)
+clear freq
+freqToGraph=0;
+freq(1:floor(length(data)/FFTsize))=0;
+d = designfilt('bandstopiir','FilterOrder',2, ...
+               'HalfPowerFrequency1',29,'HalfPowerFrequency2',67, ...
+               'DesignMethod','butter','SampleRate',SRate);
+%data=filtfilt(d,data);
+for m = 1:floor(length(data)/FFTsize)-1
+%     pause(1)
 %     figure
-    tic;
+    data((FFTsize+1)*(m-1)+1:(FFTsize+1)*(m),1)=filtfilt(d,data((FFTsize+1)*(m-1)+1:(FFTsize+1)*(m),1));
     DC=mean(data((FFTsize+1)*(m-1)+1:(FFTsize+1)*(m),1));
     for n = (FFTsize+1)*(m-1)+1:(FFTsize+1)*(m)
         data(n,1)=data(n,1)-DC;
@@ -29,15 +35,14 @@ for m = 1:floor(length(data)/FFTsize)
 %     data(FFTsize*m:FFTsize*(m+1))=(FFTsize*m:FFTsize*(m+1))-DC;
 
     Y5=fft(wave(2,:),FFTsize);
-    toc
     Y6=fft(data((FFTsize+1)*(m-1)+1:(FFTsize+1)*(m),1),FFTsize);
    % hold on
     %plotData=figure;
     subplot(2,1,1);
     plot(f2(1:end/2),abs(Y5(1:(FFTsize/2))));
-    [MAG,IND]=max(abs(Y6(1:(FFTsize/2))));
+    [MAG,IND]=max(abs(Y5(1:(FFTsize/2))));
     freq(m)=(IND-1)*SRate/(FFTsize);
-    (IND-1)*SRate/(FFTsize)
+    (IND-1)*SRate/(FFTsize);
     hold on
     plot(f2(1:end/2),abs(Y6(1:(FFTsize/2))));
     hold off
@@ -50,4 +55,26 @@ for m = 1:floor(length(data)/FFTsize)
     %saveas(plotData,sprintf('sEMG7-FFT-%d.jpeg',m));
     
 end
-movmean(freq,4)'
+rollAvg=movmean(freq,8);
+for k=1:floor(length(data)/FFTsize)-20
+    for i= 1:FFTsize
+        freqToGraph(((k-1)*FFTsize)+i)=(rollAvg(k)-50)/100000;
+    end
+end
+figure
+
+plot(data(1:end-FFTsize*20))
+hold on
+plot(freqToGraph')
+hold off
+for k= 1:length(freq)-1
+    h(k)=freq(k+1)-freq(k);
+    h2(k)=rollAvg(k+1)-rollAvg(k);
+    h3(k)-rollAvg(k+1)-freq(k);
+end
+figure
+plot(h);
+figure
+plot(h2);
+figure
+plot(h2);
